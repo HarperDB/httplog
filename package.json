@@ -1,0 +1,8 @@
+{
+  "name": "httplog",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "dependencies": {
+  }
+}
