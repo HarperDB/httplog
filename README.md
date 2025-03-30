@@ -39,3 +39,52 @@ jsResource:
 }
 ```
 
+## Things I would like to log
+- start time (when the accept occurred)
+- tls time
+- time the request was fully read
+- time betwwen request end and first byte written to client
+- request header size
+- request body size 
+- response header size
+- resposne object size
+- total bytes send (different for h2 / h3 )
+- host header
+- client ip
+- url requested
+- method
+- resposne satus code
+- content-type request
+- content-type response
+- *user-agent
+- *cookie
+- tls version
+- tls cipher
+- request id
+- *custom field(s)
+- thread id
+- connection id
+
+
+## we should also log forward requests for data fetches 
+
+We might have to provide a library that enables the logging.  If they use something different they do not get the standard logging mechanism.
+
+- start time
+- tls time
+- dns time
+- req end time
+- time to fist byte froim server
+- time to last byte
+- byte srecieved
+- header size
+- origin ip
+- client request id
+- method
+- url
+- http resposne code
+- content-type
+- tls info
+- request id
+- error codes
+  
