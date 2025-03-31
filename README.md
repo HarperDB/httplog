@@ -6,8 +6,6 @@ Extension to log HTTP requests to Harper components
 
 - Consider the a PoC
 - This is not 100% functional.  It is not properly catching errors (eg. 404s) as I beleive the null repsonse is turned into that after the `server.http` callbacks are made
-- Log rotation is not implemented
-- Log size limiting is not implemented
 
 
 ## Example config.yaml
