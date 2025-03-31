@@ -5,7 +5,7 @@ Extension to log HTTP requests to Harper components
 ## Notes
 
 - Consider this a PoC
-- This is not 100% functional.  It is not properly catching errors (eg. 404s) as I beleive the null repsonse is turned into that after the `server.http` callbacks are made
+- This is not 100% functional.  It is not properly catching errors (eg. 404s) as I believe the null response is turned into that after the `server.http` callbacks are made
 
 
 ## Example config.yaml
