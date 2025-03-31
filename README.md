@@ -45,13 +45,13 @@ jsResource:
 - request header size
 - request body size 
 - response header size
-- resposne object size
+- response object size
 - total bytes send (different for h2 / h3 )
 - host header
 - client ip
 - url requested
 - method
-- resposne satus code
+- response satus code
 - content-type request
 - content-type response
 - *user-agent
@@ -72,15 +72,15 @@ We might have to provide a library that enables the logging.  If they use someth
 - tls time
 - dns time
 - req end time
-- time to fist byte froim server
+- time to first byte from server
 - time to last byte
-- byte srecieved
+- bytes  received
 - header size
 - origin ip
 - client request id
 - method
 - url
-- http resposne code
+- http response code
 - content-type
 - tls info
 - request id
