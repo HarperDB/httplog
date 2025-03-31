@@ -51,7 +51,7 @@ jsResource:
 - client ip
 - url requested
 - method
-- response satus code
+- response status code
 - content-type request
 - content-type response
 - *user-agent
