@@ -9,6 +9,11 @@ const DEFAULT_MAX_LOGFILE_SIZE   = '1mb'
 const DEFAULT_MAX_FILES          = 7
 const DEFAULT_ROTATION_FREQUENCY = '1h'
 
+
+class HttpLogLine {
+  
+}
+
 import { Worker, isMainThread, parentPort } from 'worker_threads';
 
 let intervalId
@@ -16,25 +21,50 @@ let intervalId
 
 let config = {}
 
-/*
+function timestamp( date ) {
+  
+  const yyyy = date.getFullYear();
+  let mm = date.getMonth() + 1; // Months start at 0!
+  let dd = date.getDate();
+  let h = date.getHours()
+  let m = date.getMinutes()
+  let s = date.getSeconds()
+  
+  if (dd < 10) dd = '0' + dd;
+  if (mm < 10) mm = '0' + mm;
+  if (h < 10) h = '0' + h;
+  if (m < 10) m = '0' + m;
+  if (s < 10) s = '0' + s;
+
+  return yyyy + mm + dd + "_" + h + m + s;
+}
+
+function rotatedFilename( filename ) {
+  const base = filename.split('.').slice(0, -1).join('.');
+  const ext = filename.split('.').at(-1)
+  const ts = timestamp( new Date() )
+
+  return base + '-' + ts + '.' +ext;
+}
+
 function logRotate(file, maxSize) {
   try {
     const stat = fs.statSync(file);
     if (stat.size > maxSize) {
-      fs.renameSync(file, file.replace(/log$/, 'old.log'));
+      const newFilename = rotatedFilename( file )
+      fs.renameSync(file, newFilename );
     }
   } catch (e) {
-    // error
+    console.log( e )
   }
 }
-*/
-
-
 
 function logTick() {
 
   if (logLineBuffer.length > 0) {
     const data = logLineBuffer.join('\n') + '\n';
+
+    logRotate( config.fileName, config.maxSize )
     
     fs.appendFile( config.fileName, data, err => {
       if (err) console.error(`Error writing to log file ${config.fileName}:`, err);
@@ -44,6 +74,8 @@ function logTick() {
   }
 
 }
+
+
 
 
 
@@ -70,6 +102,8 @@ function resolveConfig(options) {
   assertType('rotationFrequency', options.rotationFrequency, [ 'string', 'number' ] );
   assertType('logWriteInterval', options.logWriteInterval, [ 'string', 'number' ] );
 
+
+  
 	const config = {
     fileName: options.fileName || DEFAULT_LOGPATH,
     maxSize: bytes(options.maxSize || DEFAULT_MAX_LOGFILE_SIZE ),
@@ -78,6 +112,17 @@ function resolveConfig(options) {
     logWriteInterval: ms(options.logWriteInterval || DEFAULT_LOG_WRITE_INTERVAL )
   }
 
+  //  const name3 = config.fileName.match(/(.*)([^.]*)$/);
+
+
+
+
+
+  //  console.log( filename )
+  //  console.log( ext )
+
+
+  
 	logger.debug('httplog:\n' + JSON.stringify(config, undefined, 2));
 
 	return config;
@@ -100,13 +145,15 @@ export async function startOnMainThread(options = {}) {
 
 
 async function sendLogFileEvents( req ) {
-  let buffer = '';
-  let position = 0;
-  let fileDescriptor = null;
+  let buffer = ''
+  let position = 0
+  let fileDescriptor = null
         
-  await req._nodeRequest.client.write( "HTTP/1.1 200 OK\r\n" );
-  await req._nodeRequest.client.write( "Content-type: text/event-stream\r\n" );
-  await req._nodeRequest.client.write( "\r\n" );
+  await req._nodeRequest.client.write( "HTTP/1.1 200 OK\r\n" )
+  await req._nodeRequest.client.write( "Content-type: text/event-stream\r\n" )
+  await req._nodeRequest.client.write( "Cache-Control: no-cache\r\n" )
+  await req._nodeRequest.client.write( "Connection: keep-alive\r\n" )
+  await req._nodeRequest.client.write( "\r\n" )
 
 
   let oldSize = 0
@@ -150,8 +197,7 @@ async function sendLogFileEvents( req ) {
         buffer = lines.pop(); // keep incomplete line
 
         lines.forEach( line => {
-          console.log( `data: ${line}` )
-          req._nodeRequest.client.write( `data: ${line}\r\n\r\n` );
+          req._nodeRequest.client.write( `data: ${line}\n\n` );
         })
 
       });
