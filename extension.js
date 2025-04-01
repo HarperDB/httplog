@@ -1,6 +1,8 @@
 import fs from 'fs';
+import * as fsp from 'fs/promises';
 import { ms } from './ms.js'
 import { bytes } from './bytes.js'
+import path from 'path';
 
 let logLineBuffer = [];
 const DEFAULT_LOGPATH            = 'http.log'
@@ -9,10 +11,7 @@ const DEFAULT_MAX_LOGFILE_SIZE   = '1mb'
 const DEFAULT_MAX_FILES          = 7
 const DEFAULT_ROTATION_FREQUENCY = '1h'
 
-
-class HttpLogLine {
-  
-}
+let requestID = 1
 
 import { Worker, isMainThread, parentPort } from 'worker_threads';
 
@@ -40,35 +39,75 @@ function timestamp( date ) {
 }
 
 function rotatedFilename( filename ) {
-  const base = filename.split('.').slice(0, -1).join('.');
-  const ext = filename.split('.').at(-1)
+  
+  const ext = path.extname( filename )
+  const name = path.basename( filename, ext )
+  const base = path.dirname( filename )
   const ts = timestamp( new Date() )
 
-  return base + '-' + ts + '.' +ext;
+  return base + '/' + name + '-' + ts + ext;
 }
 
-function logRotate(file, maxSize) {
-  try {
-    const stat = fs.statSync(file);
-    if (stat.size > maxSize) {
-      const newFilename = rotatedFilename( file )
-      fs.renameSync(file, newFilename );
+async function listLogFiles( filename ) {
+
+  const ext = path.extname( filename )
+  const name = path.basename( filename, ext )
+  const base = path.dirname( filename )
+
+
+  const dirContents = await fsp.readdir( base );
+
+  const files = []
+  const regex = new RegExp( `${name}-(\\d{8})_(\\d{6})${ext}` )
+
+  dirContents.forEach( file => {
+    const match = file.match( regex );
+    if ( match ) {
+      const stamp = parseInt(match[1] + match[2]);
+      files.push( [ stamp, `${base}/${file}` ] )
     }
-  } catch (e) {
+  })
+
+  
+  return files.sort( (a, b) => a[0] - b[0] )
+  
+}
+
+
+async function logRotate(file, maxSize) {
+  try {
+    const stat = await fsp.stat( file );
+    if (stat.size > maxSize) {
+
+      const newFilename = rotatedFilename( file )
+      await fsp.rename(file, newFilename );
+
+      const logFiles = await listLogFiles( file )
+
+      while( logFiles.length > config.maxFiles ) {
+        const file = logFiles.shift()
+        await fsp.rm( file[1] );
+      }
+
+      const fd = await fsp.open( file, 'w' );
+      await fd.close()
+      
+    }
+  }
+  catch (e) {
     console.log( e )
   }
 }
 
-function logTick() {
+async function logTick() {
 
   if (logLineBuffer.length > 0) {
     const data = logLineBuffer.join('\n') + '\n';
 
-    logRotate( config.fileName, config.maxSize )
+    await fsp.appendFile( config.fileName, data )
+
+    //    await logRotate( config.fileName, config.maxSize )
     
-    fs.appendFile( config.fileName, data, err => {
-      if (err) console.error(`Error writing to log file ${config.fileName}:`, err);
-    });
     
     logLineBuffer.length = 0; 
   }
@@ -80,7 +119,7 @@ function logTick() {
 
 
 function log( req, resp ) {
-  const logline = `r ${(req.httplog.start/1000).toFixed(3)} ${req.method} ${resp.status} HTTP/${req._nodeRequest.httpVersion} ${req.host} ${req.url}`
+  const logline = `r ${(req.httplog.start/1000).toFixed(3)} ${req.httplog.id} ${req.method} ${resp.status} HTTP/${req._nodeRequest.httpVersion} ${req.host} ${req.url}`
   logLineBuffer.push( logline )
 }
 
@@ -112,17 +151,6 @@ function resolveConfig(options) {
     logWriteInterval: ms(options.logWriteInterval || DEFAULT_LOG_WRITE_INTERVAL )
   }
 
-  //  const name3 = config.fileName.match(/(.*)([^.]*)$/);
-
-
-
-
-
-  //  console.log( filename )
-  //  console.log( ext )
-
-
-  
 	logger.debug('httplog:\n' + JSON.stringify(config, undefined, 2));
 
 	return config;
@@ -145,65 +173,79 @@ export async function startOnMainThread(options = {}) {
 
 
 async function sendLogFileEvents( req ) {
+
   let buffer = ''
-  let position = 0
-  let fileDescriptor = null
-        
-  await req._nodeRequest.client.write( "HTTP/1.1 200 OK\r\n" )
-  await req._nodeRequest.client.write( "Content-type: text/event-stream\r\n" )
-  await req._nodeRequest.client.write( "Cache-Control: no-cache\r\n" )
-  await req._nodeRequest.client.write( "Connection: keep-alive\r\n" )
-  await req._nodeRequest.client.write( "\r\n" )
+  let headersSent = false
 
+  
+  // Loop forever
+  while( 1 ) {
 
-  let oldSize = 0
-        
-  fs.open(config.fileName, 'r', (err, fd) => {
-    if (err) {
-      console.error(`Failed to open file: ${err.message}`);
-      return;
+    let fd
+    
+    try {
+      fd = await fsp.open( config.fileName, 'r' )
+
+      if ( ! headersSent ) {
+        await req._nodeRequest.client.write( "HTTP/1.1 200 OK\r\n" )
+        await req._nodeRequest.client.write( "Content-type: text/event-stream\r\n" )
+        await req._nodeRequest.client.write( "Cache-Control: no-cache\r\n" )
+        await req._nodeRequest.client.write( "Connection: keep-alive\r\n" )
+        await req._nodeRequest.client.write( "\r\n" )
+        headersSent = true
+      }
     }
-    fileDescriptor = fd;
+    catch {
+      if ( ! headersSent ) {
+        await req._nodeRequest.client.write( "HTTP/1.1 404 Not Found\r\n\r\n" )
+        headersSent = true
+      }
+      await req._nodeRequest.client.write( "data: Log file missing. Try again\r\n\r\n" )
+      await req._nodeRequest.client.destroy()
+      return
+    }
+    
+    try {
+      
+      let stats = await fd.stat();
+      let pos = stats.size
+    
+      for await ( const changes of await fsp.watch( config.fileName ) ) {
 
-    // Get the initial position (end of file)
-    fs.fstat(fd, (err, stats) => {
-      if (err) return;
-      position = stats.size;
+        const stats = await fd.stat();
 
-      // Start watching
-      fs.watch(config.fileName, (eventType) => {
-        if (eventType === 'change') {
-          readNewLines(   );
+        const bytesToRead = stats.size - pos
+
+        if ( bytesToRead > 0 ) {
+          const readBuffer = Buffer.alloc(bytesToRead);
+          const r = await fd.read( readBuffer, 0, bytesToRead, pos )
+
+          pos += readBuffer.length
+          buffer += readBuffer.toString('utf8');
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // keep incomplete line
+          
+          for ( const line of lines ) {
+            const r = await req._nodeRequest.client.write( `data: ${line}\n\n` );
+          }
         }
-      });
-    });
-  });
+        
 
-  function readNewLines() {
-    fs.fstat(fileDescriptor, (err, stats) => {
-      if (err) return;
-      const newSize = stats.size;
-      const bytesToRead = newSize - position;
+        if ( changes.eventType === 'rename' ) {
+          await fd.close()
+          break
+        }
+      }
 
-      if (bytesToRead <= 0) return;
+      console.log( "Exiting watch" )
 
-      const readBuffer = Buffer.alloc(bytesToRead);
-      fs.read(fileDescriptor, readBuffer, 0, bytesToRead, position, (err, bytesRead, bufferChunk) => {
-        if (err) return;
 
-        position += bytesRead;
-        buffer += bufferChunk.toString('utf8');
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // keep incomplete line
-
-        lines.forEach( line => {
-          req._nodeRequest.client.write( `data: ${line}\n\n` );
-        })
-
-      });
-    });
+    }
+    catch( error ) {
+      console.log( error )
+      return null
+    }
   }
-
 }
 
 export async function start( options = {} ) {
@@ -232,8 +274,11 @@ export async function start( options = {} ) {
       
       req.httplog = {
         start: Date.now(),
+        id: requestID
       }
 
+      requestID++
+      
       const resp = await next(req)
 
       log( req, resp )
