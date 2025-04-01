@@ -4,10 +4,8 @@ Extension to log HTTP requests to Harper components
 
 ## Notes
 
-- Consider the a PoC
-- This is not 100% functional.  It is not properly catching errors (eg. 404s) as I beleive the null repsonse is turned into that after the `server.http` callbacks are made
-- Log rotation is not implemented
-- Log size limiting is not implemented
+- Consider this a PoC
+- This is not 100% functional.  It is not properly catching errors (eg. 404s) as I believe the null response is turned into that after the `server.http` callbacks are made
 
 
 ## Example config.yaml
@@ -47,13 +45,13 @@ jsResource:
 - request header size
 - request body size 
 - response header size
-- resposne object size
+- response object size
 - total bytes send (different for h2 / h3 )
 - host header
 - client ip
 - url requested
 - method
-- resposne satus code
+- response status code
 - content-type request
 - content-type response
 - *user-agent
@@ -74,15 +72,15 @@ We might have to provide a library that enables the logging.  If they use someth
 - tls time
 - dns time
 - req end time
-- time to fist byte froim server
+- time to first byte from server
 - time to last byte
-- byte srecieved
+- bytes  received
 - header size
 - origin ip
 - client request id
 - method
 - url
-- http resposne code
+- http response code
 - content-type
 - tls info
 - request id
