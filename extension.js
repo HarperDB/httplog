@@ -4,20 +4,15 @@ import { ms } from './ms.js'
 import { bytes } from './bytes.js'
 import path from 'path';
 
-let logLineBuffer = [];
 const DEFAULT_LOGPATH            = 'http.log'
 const DEFAULT_LOG_WRITE_INTERVAL = '1s'
 const DEFAULT_MAX_LOGFILE_SIZE   = '1mb'
 const DEFAULT_MAX_FILES          = 7
 const DEFAULT_ROTATION_FREQUENCY = '1h'
 
+let logLineBuffer = [];
 let requestID = 1
-
-import { Worker, isMainThread, parentPort } from 'worker_threads';
-
 let intervalId
-
-
 let config = {}
 
 function timestamp( date ) {
