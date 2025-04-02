@@ -1,1 +1,4 @@
 extensionModule: ./extension.js
+jsResource:
+  files: ./resource.js
+        

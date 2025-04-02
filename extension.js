@@ -155,7 +155,6 @@ function resolveConfig(options) {
 
 export async function startOnMainThread(options = {}) {
 
-
   try {
     config = resolveConfig(options);
   }
@@ -167,81 +166,6 @@ export async function startOnMainThread(options = {}) {
 }
 
 
-async function sendLogFileEvents( req ) {
-
-  let buffer = ''
-  let headersSent = false
-
-  
-  // Loop forever
-  while( 1 ) {
-
-    let fd
-    
-    try {
-      fd = await fsp.open( config.fileName, 'r' )
-
-      if ( ! headersSent ) {
-        await req._nodeRequest.client.write( "HTTP/1.1 200 OK\r\n" )
-        await req._nodeRequest.client.write( "Content-type: text/event-stream\r\n" )
-        await req._nodeRequest.client.write( "Cache-Control: no-cache\r\n" )
-        await req._nodeRequest.client.write( "Connection: keep-alive\r\n" )
-        await req._nodeRequest.client.write( "\r\n" )
-        headersSent = true
-      }
-    }
-    catch {
-      if ( ! headersSent ) {
-        await req._nodeRequest.client.write( "HTTP/1.1 404 Not Found\r\n\r\n" )
-        headersSent = true
-      }
-      await req._nodeRequest.client.write( "data: Log file missing. Try again\r\n\r\n" )
-      await req._nodeRequest.client.destroy()
-      return
-    }
-    
-    try {
-      
-      let stats = await fd.stat();
-      let pos = stats.size
-    
-      for await ( const changes of await fsp.watch( config.fileName ) ) {
-
-        const stats = await fd.stat();
-
-        const bytesToRead = stats.size - pos
-
-        if ( bytesToRead > 0 ) {
-          const readBuffer = Buffer.alloc(bytesToRead);
-          const r = await fd.read( readBuffer, 0, bytesToRead, pos )
-
-          pos += readBuffer.length
-          buffer += readBuffer.toString('utf8');
-          const lines = buffer.split('\n');
-          buffer = lines.pop(); // keep incomplete line
-          
-          for ( const line of lines ) {
-            const r = await req._nodeRequest.client.write( `data: ${line}\n\n` );
-          }
-        }
-        
-
-        if ( changes.eventType === 'rename' ) {
-          await fd.close()
-          break
-        }
-      }
-
-      console.log( "Exiting watch" )
-
-
-    }
-    catch( error ) {
-      console.log( error )
-      return null
-    }
-  }
-}
 
 export async function start( options = {} ) {
 
@@ -260,16 +184,11 @@ export async function start( options = {} ) {
 
   server.http(
 		async (req, next) => {
-
-      if ( req.url === '/taillog' ) {
-        await sendLogFileEvents( req );
-        return null
-      }
-
       
       req.httplog = {
         start: Date.now(),
-        id: requestID
+        id: requestID,
+        config: config
       }
 
       requestID++
