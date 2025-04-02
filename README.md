@@ -5,7 +5,17 @@ Extension to log HTTP requests to Harper components
 ## Notes
 
 - Consider this a PoC
-- This is not 100% functional.  It is not properly catching errors (eg. 404s) as I believe the null response is turned into that after the `server.http` callbacks are made
+- This is not 100% functional. 
+
+### Todo
+
+- Make the logging configurable
+- Add custom field(s) that components can set
+- Add authentication to the taillog endpoint
+- Simplify the implementation, serious refatoring needed
+- Potentially integrate as a core component
+- Handle core generated errors better
+
 
 
 ## Example config.yaml
