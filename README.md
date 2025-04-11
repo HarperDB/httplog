@@ -28,6 +28,7 @@ httplog:
   maxFiles: 7
   rotationFrequency: 1h
   logWriteInterval: 1s
+  tail: false
 rest: true
 graphql: true
 graphqlSchema:
