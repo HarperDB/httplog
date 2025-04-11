@@ -57,23 +57,25 @@ jsResource:
 - response header size
 - response object size
 - total bytes send (different for h2 / h3 )
-- host header
-- client ip
-- url requested
-- method
-- response status code
+- +host header
+- +client ip
+- +url requested
+- +method
+- +response status code
 - content-type request
 - content-type response
 - *user-agent
 - *cookie
 - tls version
 - tls cipher
-- request id
-- *custom field(s)
-- thread id
-- connection id
+- +request id
+- +custom field(s)
+- thread id (part of the request ID)
+- connection id (releant for PConns )
 
-
+* - this should be configurable and not on my default
++ - Already in the extension
+  
 ## we should also log forward requests for data fetches 
 
 We might have to provide a library that enables the logging.  If they use something different they do not get the standard logging mechanism.
