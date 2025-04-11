@@ -69,6 +69,10 @@ export class taillog extends Resource {
   connect() { // note that this can handle both SSE *and* WS
 
     const context = this.getContext()
+
+    if ( !context.httplog.config.tail ) {
+      return { status: 405, headers: {} }
+    }
     
     let outgoingMessages = super.connect();
 
@@ -80,4 +84,11 @@ export class taillog extends Resource {
     
     return outgoingMessages
   }
+}
+
+export class error extends Resource {
+  get(query) {
+    iauhiuh
+  }
+  
 }

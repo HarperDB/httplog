@@ -1,19 +1,41 @@
-import fs from 'fs';
-import * as fsp from 'fs/promises';
+import fs from 'fs/promises';
 import { ms } from './ms.js'
 import { bytes } from './bytes.js'
 import path from 'path';
+import { threadId as threadID } from 'worker_threads';
 
 const DEFAULT_LOGPATH            = 'http.log'
 const DEFAULT_LOG_WRITE_INTERVAL = '1s'
 const DEFAULT_MAX_LOGFILE_SIZE   = '1mb'
 const DEFAULT_MAX_FILES          = 7
 const DEFAULT_ROTATION_FREQUENCY = '1h'
+const DEFAULT_LOG_TAILING        = false
 
 let logLineBuffer = [];
 let requestID = 1
 let intervalId
 let config = {}
+
+
+class LogLine {
+  constructor( options = { id: null, config: null } ) {
+    this.start = Date.now()
+    this.id = options.id
+    this.config = options.config
+    this.custom = []
+  }
+
+  addCustomField( value, n = 1 ) {
+    if ( n > 1 ) {
+      throw( "Trying to log too many custom fields" )
+    }
+    if ( n < 1 ) {
+      throw( "Trying to log a custom field with too small an index" )
+    }
+
+    this.custom[n-1] = value;
+  }
+}
 
 function timestamp( date ) {
   
@@ -35,22 +57,21 @@ function timestamp( date ) {
 
 function rotatedFilename( filename ) {
   
-  const ext = path.extname( filename )
+  const ext  = path.extname( filename )
   const name = path.basename( filename, ext )
   const base = path.dirname( filename )
-  const ts = timestamp( new Date() )
+  const ts   = timestamp( new Date() )
 
   return base + '/' + name + '-' + ts + ext;
 }
 
 async function listLogFiles( filename ) {
 
-  const ext = path.extname( filename )
+  const ext  = path.extname( filename )
   const name = path.basename( filename, ext )
   const base = path.dirname( filename )
 
-
-  const dirContents = await fsp.readdir( base );
+  const dirContents = await fs.readdir( base );
 
   const files = []
   const regex = new RegExp( `${name}-(\\d{8})_(\\d{6})${ext}` )
@@ -71,20 +92,20 @@ async function listLogFiles( filename ) {
 
 async function logRotate(file, maxSize) {
   try {
-    const stat = await fsp.stat( file );
+    const stat = await fs.stat( file );
     if (stat.size > maxSize) {
 
       const newFilename = rotatedFilename( file )
-      await fsp.rename(file, newFilename );
+      await fs.rename(file, newFilename );
 
       const logFiles = await listLogFiles( file )
 
       while( logFiles.length > config.maxFiles ) {
         const file = logFiles.shift()
-        await fsp.rm( file[1] );
+        await fs.rm( file[1] );
       }
 
-      const fd = await fsp.open( file, 'w' );
+      const fd = await fs.open( file, 'w' );
       await fd.close()
       
     }
@@ -99,7 +120,7 @@ async function logTick() {
   if (logLineBuffer.length > 0) {
     const data = logLineBuffer.join('\n') + '\n';
 
-    await fsp.appendFile( config.fileName, data )
+    await fs.appendFile( config.fileName, data )
 
     //    await logRotate( config.fileName, config.maxSize )
     
@@ -114,7 +135,25 @@ async function logTick() {
 
 
 function log( req, resp ) {
-  const logline = `r ${(req.httplog.start/1000).toFixed(3)} ${req.httplog.id} ${req.method} ${resp.status} HTTP/${req._nodeRequest.httpVersion} ${req.host} ${req.url}`
+  const status = resp.status == -1 ? 404 : resp.status
+
+  const custom = req.httplog.custom[0] ?? '-'
+
+  const fields = [
+    'r',
+    (req.httplog.start/1000).toFixed(3),
+    req.httplog.id,
+    req.httplog.clientAddress,
+    req.method,
+    status,
+    `HTTP/${req._nodeRequest.httpVersion}`,
+    req.host,
+    req.url,
+    custom
+  ]
+  
+  const logline = fields.join( ' ' )
+  
   logLineBuffer.push( logline )
 }
 
@@ -135,18 +174,16 @@ function resolveConfig(options) {
 	assertType('maxFiles', options.maxFile,  'number');
   assertType('rotationFrequency', options.rotationFrequency, [ 'string', 'number' ] );
   assertType('logWriteInterval', options.logWriteInterval, [ 'string', 'number' ] );
-
-
+  assertType('tail', options.tail, 'boolean' );
   
 	const config = {
-    fileName: options.fileName || DEFAULT_LOGPATH,
-    maxSize: bytes(options.maxSize || DEFAULT_MAX_LOGFILE_SIZE ),
-    maxFiles: options.maxFiles || DEFAULT_MAX_FILES,
+    fileName:          options.fileName             || DEFAULT_LOGPATH,
+    maxSize:           bytes(options.maxSize        || DEFAULT_MAX_LOGFILE_SIZE ),
+    maxFiles:          options.maxFiles             || DEFAULT_MAX_FILES,
     rotationFrequency: ms(options.rotationFrequency || DEFAULT_LOG_WRITE_INTERVAL ),
-    logWriteInterval: ms(options.logWriteInterval || DEFAULT_LOG_WRITE_INTERVAL )
+    logWriteInterval:  ms(options.logWriteInterval  || DEFAULT_LOG_WRITE_INTERVAL ),
+    tail:              options.tail                 || DEFAULT_LOG_TAILING
   }
-
-	logger.debug('httplog:\n' + JSON.stringify(config, undefined, 2));
 
 	return config;
 }
@@ -184,13 +221,12 @@ export async function start( options = {} ) {
 
   server.http(
 		async (req, next) => {
-      
-      req.httplog = {
-        start: Date.now(),
-        id: requestID,
-        config: config
-      }
 
+      req.httplog = new LogLine( { id: `${requestID}.${threadID}`, config } )
+
+      req.httplog.clientAddress = req._nodeRequest.socket.remoteAddress
+      
+      
       requestID++
       
       const resp = await next(req)
