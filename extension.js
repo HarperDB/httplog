@@ -135,7 +135,12 @@ async function logTick() {
 
 
 function log( req, resp ) {
-  const status = resp.status == -1 ? 404 : resp.status
+  // coerce undefined/null to -2
+  let status = resp?.status ?? -2;
+  if (status < 100) {
+    if (status === -1) status = 404;
+    else if (status === -2 && req.isWebSocket) status = 101;
+  }
 
   const custom = req.httplog.custom[0] ?? '-'
 
